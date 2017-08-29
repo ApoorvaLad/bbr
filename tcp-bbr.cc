@@ -97,7 +97,7 @@ TcpBbr::TcpBbr (void) :
  
   m_avgBdwWindow(0),
   m_slowStart(true),
-  m_firstBdw(true),
+ // m_firstBdw(true),
   m_slowStartPacketscount(3),
   m_drainFactor(0.75),
   m_probeFactor(1.25),
@@ -137,7 +137,7 @@ TcpBbr::TcpBbr (const TcpBbr& sock) :
   m_avgRTTwindow(sock.m_avgRTTwindow),
  // m_maxBwd(sock.m_maxBwd),
   m_slowStart(sock.m_slowStart),
-   m_firstBdw(true),
+ //  m_firstBdw(true),
   m_slowStartPacketscount(sock.m_slowStartPacketscount),
   m_drainFactor(sock.m_drainFactor),
   m_probeFactor(sock.m_probeFactor),
@@ -155,10 +155,12 @@ TcpBbr::~TcpBbr (void)
 
 }
 
-int TcpBbr::m_maxBwd = 0;
-Time TcpBbr::m_minRtt = Time(0);
-uint32_t TcpBbr::m_bdp = 0;
-int TcpBbr::gain = 1;
+int TcpBbr::m_maxBwd = 1900000;
+Time TcpBbr::m_minRtt = Time(MilliSeconds(22));
+double TcpBbr::m_bdp = 0;
+double TcpBbr::gain = 1.0;
+int TcpBbr::m_firstBdw = 1;
+Time TcpBbr::m_lastRtt = Time(0);
 //map functionality to get min RTT and MaxThroughput 
 //Saturday
 void
@@ -171,8 +173,8 @@ TcpBbr::PktsAcked (Ptr<TcpSocketState> tcb, uint32_t packetsAcked,
 //  m_wndEstimateEvent = Simulator::Schedule(rtt,&TcpBbr::EstimateMinMax,this,rtt,tcb);
   //
  
-
-  m_wndEstimateEvent.Cancel();
+   m_lastRtt = rtt;
+ // m_wndEstimateEvent.Cancel();
   if (rtt.IsZero ())
     {
       NS_LOG_WARN ("RTT measured is zero!");
@@ -180,17 +182,17 @@ TcpBbr::PktsAcked (Ptr<TcpSocketState> tcb, uint32_t packetsAcked,
     }
 
     m_ackedSegments = 1;
-    if(m_firstBdw) {
-
-        tcb->m_cWnd =  32000;
-        m_currentBW = (double)tcb->m_cWnd / rtt.GetSeconds();
+   // if(m_firstBdw) {
+       // std::cerr<<m_firstBdw<<std::endl;
+       // tcb->m_cWnd =  32000;
+      //  m_currentBW = (double)tcb->m_cWnd / rtt.GetSeconds();
        // std::cerr<<m_currentBW<<std::endl;
-        m_minRtt = rtt;
+       // m_minRtt = rtt;
        
-        m_firstBdw =false;
-        SetState(tcb,m_ackedSegments,1);
+      //  m_firstBdw =false;
+       // SetState(tcb,m_ackedSegments,1);
     //  m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,m_ackedSegments,true);
-      }
+     // }
 
    // std::cerr<<"Received"<<std::endl;
     
@@ -209,26 +211,7 @@ TcpBbr::PktsAcked (Ptr<TcpSocketState> tcb, uint32_t packetsAcked,
 
   //std::cerr << Simulator::Now().GetSeconds()<< " " <<rtt.GetSeconds()<<std::endl; 
 
-m_rttWindow[m_rttCounter]= rtt;
- 
-    if(m_rttWindow.size()>20000) 
-  
-    m_rttWindow.erase(m_rttWindow.begin());//erase oldest
 
-
-  m_minRtt = Time::Max();
-    for(std::map<uint32_t,Time>::iterator it = m_rttWindow.begin();it!=m_rttWindow.end();++it )
-    {                  
-      m_minRtt = std::min(m_minRtt,it->second);
-    }
-
-  if(m_timeWindow.size()>5) //We need to set window size to be 8 Rtts instead of 8 packets received
-  
-    m_timeWindow.erase(m_timeWindow.begin());//erase oldest
-  m_timeWindow[m_rttCounter]= Simulator::Now();
-
-  m_rttCounter++;
-  m_currentRtt = rtt;
   
 //  std::cerr<<m_bdp<<std::endl;
 
@@ -254,11 +237,27 @@ m_rttWindow[m_rttCounter]= rtt;
 void 
 TcpBbr::Send(Ptr<TcpSocketState> tcb)
 {
+  
 
+  if(m_firstBdw == 1){
+     tcb->m_cWnd =  1900000;
+    m_firstBdw = 0;
+    SetState(tcb,1);
+
+  }
+  
+  
   m_bdp = m_minRtt.GetSeconds() * m_maxBwd;
+  std::cerr<<Simulator::Now().GetSeconds()<<" bdp  gain "<<m_bdp<<std::endl;
+  std::cerr<<Simulator::Now().GetSeconds()<<" Gain factor "<<gain<<std::endl;
   m_bdp = m_bdp * gain;
+   std::cerr<<Simulator::Now().GetSeconds()<<" bdp  after gain "<<m_bdp<<std::endl;
+  //std::cerr<<"BDP is "<<m_bdp<<std::endl;
+ // std::cerr<<"BDP is "<<m_bdp<<std::endl;
   tcb->m_cWnd = m_bdp;
-  std::cerr<<"Send "<<m_bdp<<" "<<Simulator::Now().GetSeconds()<<std::endl;
+ 
+  std::cerr<<Simulator::Now().GetSeconds()<<" "<<tcb->m_cWnd<<std::endl;
+ // std::cerr<<"Send "<<m_bdp<<" "<<Simulator::Now().GetSeconds()<<std::endl;
   //
   
 
@@ -279,9 +278,9 @@ void
 TcpBbr::Recv(const TcpHeader& tcpHeader,Time m_receiveTime,uint32_t size)
 {
 
-
  
- // std::cerr<<m_minRtt<<std::endl;
+ 
+ 
   m_counter = tcpHeader.GetSequenceNumber();
   receiveTimeWindow[m_counter] = m_receiveTime;
   Time m_prevTime;
@@ -290,17 +289,37 @@ TcpBbr::Recv(const TcpHeader& tcpHeader,Time m_receiveTime,uint32_t size)
   if(tcpHeader.GetSequenceNumber().GetValue() != 1) 
   {
     m_prevTime = receiveTimeWindow[m_counter - 536];
+   // std::cerr<<"Prev Time "<<m_receiveTime<<std::endl;
+    //std::cerr<<"Receive Time "<<m_prevTime<<std::endl;
+    m_currentBW = (uint32_t) size / (m_receiveTime.GetSeconds() - m_prevTime.GetSeconds());
+
 
   } else {
-
+    m_lastRtt = Time(MilliSeconds(22));
+    m_currentBW = 1900000;
    // tcb->m_cWnd = 1900000;
   }
+ 
+  m_rttWindow[m_rttCounter]= m_lastRtt;
+ 
+    if(m_rttWindow.size()>20000) 
+  
+    m_rttWindow.erase(m_rttWindow.begin());//erase oldest
+
+
+  m_minRtt = Time::Max();
+    for(std::map<uint32_t,Time>::iterator it = m_rttWindow.begin();it!=m_rttWindow.end();++it )
+    {                  
+      m_minRtt = std::min(m_minRtt,it->second);
+    }
+
+ 
 
  // std::cerr<<"Prev time "<<m_prevTime.GetSeconds()<<std::endl;
   //std::cerr<<"current time "<<m_receiveTime.GetSeconds()<<std::endl;
-  m_currentBW = (uint32_t) size / (m_receiveTime.GetSeconds() - m_prevTime.GetSeconds());
+  
  
-
+// std::cerr<<Simulator::Now().GetSeconds()<<m_minRtt.GetSeconds()<<std::endl;
  
   m_bdwWindow[m_rttCounter] = m_currentBW;
 
@@ -310,11 +329,20 @@ TcpBbr::Recv(const TcpHeader& tcpHeader,Time m_receiveTime,uint32_t size)
     m_bdwWindow.erase(m_bdwWindow.begin());//erase oldest
   for(std::map<uint32_t,int>::iterator it = m_bdwWindow.begin();it!=m_bdwWindow.end();++it )
   {  m_maxBwd = (int) std::max(m_maxBwd,it->second);
+    // std::cerr<<"Data rate "<<it->second<<std::endl;
+     //std::cerr<<"MAx data rate "<<m_maxBwd<<std::endl;
+    // std::cerr<<"REceive "<<m_maxBwd<<std::endl;
                 //std::cerr<<"PktsAcked: bdw  "<<it->second<<std::endl;
 
    }
 
-   //std::cerr<<m_currentBW<<std::endl;
+
+ //  std::cerr<<"Min RTT registered "<<" "<<m_minRtt.GetSeconds()<<std::endl;
+  // std::cerr<<"Maximum bandwidth registered "<<" "<<m_maxBwd<<std::endl;
+
+   // std::cerr<<Simulator::Now().GetSeconds()<<" "<<m_currentBW<<std::endl;
+
+  
 
 
 }
@@ -367,7 +395,7 @@ tcb->m_ssThresh = 2147483646;
 
 
  void 
- TcpBbr::SetState(Ptr<TcpSocketState> tcb, uint32_t segmentsAcked, int i){
+ TcpBbr::SetState(Ptr<TcpSocketState> tcb, int i){
 
 
 
@@ -385,12 +413,13 @@ std::cerr<<"Min RTT "<<m_minRtt<<std::endl;*/
 if( i == 1) {
  
  gain = m_probeFactor;
+//std::cerr<<m_probeFactor<<std::endl;
 // m_bdp = m_bdp * m_probeFactor;
 
  i = i+1;
  
-
- m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,segmentsAcked,i);
+// std::cerr<<"Probe factor at "<<Simulator::Now().GetSeconds()<<"is "<<gain<<std::endl; 
+ m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,i);
 
   }
 else if(i == 2) {
@@ -399,9 +428,9 @@ else if(i == 2) {
   //m_bdp = m_bdp * m_drainFactor;
  
   i = i + 1;
-
+ //  std::cerr<<"Drai factor at "<<Simulator::Now().GetSeconds()<<"is "<<gain<<std::endl; 
  // std::cerr<<Simulator::Now().GetSeconds()<<" "<<m_currentBW<<std::endl;
-  m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,segmentsAcked,i);
+  m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,i);
 
 
 } else {
@@ -410,8 +439,8 @@ else if(i == 2) {
   
 //  m_bwEstimateEvent.Cancel();
  // m_bdp = m_bdp * m_steadyFactor;
-  
-  m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,segmentsAcked,i);
+  // std::cerr<<"Steady state factor at "<<Simulator::Now().GetSeconds()<<"is "<<gain<<std::endl; 
+  m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,i);
    
   //m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::CheckState,this,tcb,segmentsAcked,true);
  // std::cerr<<Simulator::Now().GetSeconds()<<" "<<m_currentBW<<std::endl;
@@ -420,7 +449,7 @@ else if(i == 2) {
   
     i =1;
     m_probeEstimateEvent.Cancel();
-    m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,segmentsAcked,i);
+    m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,i);
   }
 
 }
@@ -492,7 +521,7 @@ else if(i == 2) {
   
   //  m_count =0;
     m_probeEstimateEvent.Cancel();
-    m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,segmentsAcked,true);
+    m_probeEstimateEvent = Simulator::Schedule(m_minRtt,&TcpBbr::SetState,this,tcb,true);
  // }
 // std::cerr<<"Average RTT "<<m_avgRTTwindow<<std::endl;
 

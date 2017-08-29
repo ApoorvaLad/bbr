@@ -120,7 +120,7 @@ public:
 
 private:
   
-  void SetState(Ptr<TcpSocketState> tcb, uint32_t segmentsAcked,int i);
+  void SetState(Ptr<TcpSocketState> tcb,int i);
 
   void CheckState(Ptr<TcpSocketState> tcb, uint32_t segmentsAcked,bool increaseWindow);
 
@@ -148,10 +148,12 @@ protected:
   Time                    m_bdwEstimateTime;
 
   double                 m_currentTimeStamp;
-  static uint32_t m_bdp;
-  static int gain;
+  static double m_bdp;
+  static double gain;
   double                 m_lastBW;                 //!< Last bandwidth sample after being filtered
   static Time            m_minRtt; 
+  static Time            m_lastRtt;
+
   int i;
   Time m_probeTime;                //!< Minimum RTT
   enum ProtocolType      m_pType;                  //!< 0 for Bbr, 1 for Bbr+
@@ -184,7 +186,7 @@ protected:
   static int m_maxBwd;
   double m_avgBdwWindow;
   bool m_slowStart;
-  bool m_firstBdw;
+  static int m_firstBdw;
   uint32_t m_slowStartPacketscount; //count to exit slowstart if throughput is not changing
   double m_drainFactor;
   double m_probeFactor;
